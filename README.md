@@ -1,4 +1,4 @@
-== Build instructions:
+# Build instructions:
 - build BMI shared libraries
 - build CCI shared libraries
   (downloads at http://cci-forum.com/?page_id=46)
@@ -7,7 +7,7 @@
 - set LD_LIBRARY_PATH to point at BMI's, CCI's library paths
 - run make with appropriate CFLAGS (e.g. -O3)
 
-== benchmark descriptions
+# Benchmark descriptions
 
 hg-ctest1
 - looking at client-side concurrent issuance of data, rpc's
@@ -27,9 +27,9 @@ hg-ctest4
 - N client processes, 1 server process, each single-threaded. Clients can be
   configured in RPC or bulk xfer mode. 
 
-== Running
+# Running
 
-general
+## general
 - when running the server, it's useful to fix the port the server attaches to.
   For that purpose, use CCI_CONFIG=cci-serv.conf (modify to your purposes)
   when running ./hg-ctestX server.
@@ -37,7 +37,7 @@ general
     script against that.
 - run programs without arguments to see usage instructions
 
-== Scratch notes
+# Scratch notes
 - CCI ignores mercury URIs passed in, but Mercury must be able to correctly
   parse the URI input. So just use a dummy like cci+tcp://foobar as the URI for
   the server (the client of course needs to provide the resulting URI)
