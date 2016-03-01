@@ -1,5 +1,5 @@
 .SUFFIXES:
-.SUFFIXES: .c .o
+.SUFFIXES: .c .h .o
 
 PKG_CFLAGS := $(shell pkg-config mercury --cflags)
 PKG_LDLIBS := $(shell pkg-config mercury --libs)
@@ -17,9 +17,15 @@ PKG_CFLAGS += $(shell pkg-config libtcmalloc --cflags)
 PKG_LDLIBS += $(shell pkg-config libtcmalloc --libs)
 endif
 
+USE_DUMMY_PTHREAD ?= no
+
+DUMMY_PTHREAD :=
+ifeq ($(USE_DUMMY_PTHREAD),yes)
+DUMMY_PTHREAD := pthread-noop.o
+endif
+
 override CFLAGS += -Wall -Wextra -std=gnu99 $(PKG_CFLAGS)
 override LDLIBS += $(PKG_LDLIBS)
-CC := gcc
 
 EXES := hg-ctest1 hg-ctest2 hg-ctest3 hg-ctest4
 
@@ -28,7 +34,7 @@ HEADERS := hg-ctest-util.h
 
 all: $(EXES)
 
-$(EXES): $(UTILS) $(HEADERS)
+$(EXES): $(UTILS) $(DUMMY_PTHREAD) $(HEADERS)
 
 hg-ctest-util.o: hg-ctest-util.h
 

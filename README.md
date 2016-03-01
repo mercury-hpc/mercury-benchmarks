@@ -58,3 +58,5 @@ successfully.
 - CCI ignores mercury URIs passed in, but Mercury must be able to correctly
   parse the URI input. So just use a dummy like cci+tcp://foobar as the URI for
   the server (the client of course needs to provide the resulting URI)
+- As a complete hack, in certain cases running in single-threaded mode one can
+  disable pthread usage. Specify USE_DUMMY_PTHREAD=yes in your make invocation.
