@@ -1,3 +1,9 @@
+/*
+ * Copyright 2015-2016 Argonne National Laboratory, Department of Energy,
+ * UChicago Argonne, LLC and the HDF Group. See COPYING in the top-level
+ * directory
+ */
+
 #ifndef HG_CTEST_UTIL_H
 #define HG_CTEST_UTIL_H
 

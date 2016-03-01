@@ -1,3 +1,9 @@
+/*
+ * Copyright 2015-2016 Argonne National Laboratory, Department of Energy,
+ * UChicago Argonne, LLC and the HDF Group. See COPYING in the top-level
+ * directory
+ */
+
 /* Test handling of point-to-point concurrent RPCs and bulk transfers in
  * mercury */
 

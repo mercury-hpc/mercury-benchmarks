@@ -1,3 +1,9 @@
+/*
+ * Copyright 2015-2016 Argonne National Laboratory, Department of Energy,
+ * UChicago Argonne, LLC and the HDF Group. See COPYING in the top-level
+ * directory
+ */
+
 #include <stdio.h>
 #include <assert.h>
 #include <time.h>
