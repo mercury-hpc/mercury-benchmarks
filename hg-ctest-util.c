@@ -245,7 +245,7 @@ void run_server(
     FILE *f;
     char * nm;
     const char * cl;
-    const int nm_len = 256;
+    na_size_t nm_len = 256;
     char * fname;
 
     if (id_str) {
@@ -278,7 +278,7 @@ void run_server(
 
     nm = malloc(nm_len);
     assert(nm);
-    nret = NA_Addr_to_string(nhserv.nacl, nm, nm_len, nhserv.self);
+    nret = NA_Addr_to_string(nhserv.nacl, nm, &nm_len, nhserv.self);
     assert(nret == NA_SUCCESS);
 
     fprintf(f, "%s%s\n", cl, nm);
