@@ -100,6 +100,8 @@ static void * rpc_thread_run(void * arg)
     unsigned int num_cb;
     int rc;
 
+    (void)arg;
+
     loop = malloc(sizeof(*loop));
     assert(loop);
 
