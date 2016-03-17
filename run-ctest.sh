@@ -44,6 +44,8 @@ benchmark_timeopt=
 benchmark4_num_clis=1
 # bench 4 - how many clients to do bulk operations
 benchmark4_num_bulk_clis=0
+# bench 4 - whether to do rpcs or rpc+bulks
+benchmark4_rpc_mode=rpc
 
 host_default=localhost
 
@@ -57,7 +59,7 @@ server_err=$out_prefix-srv.err
 client_out=$out_prefix.out
 client_err=$out_prefix.err
 
-while getopts ":s:an:t:b:" opt ; do
+while getopts ":s:an:t:b:m:" opt ; do
     case $opt in
         s)
             sz=$OPTARG
@@ -73,6 +75,9 @@ while getopts ":s:an:t:b:" opt ; do
             ;;
         b)
             benchmark4_num_bulk_clis="$OPTARG"
+            ;;
+        m)
+            benchmark4_rpc_mode="$OPTARG"
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
@@ -166,7 +171,7 @@ function run () {
         else
             cli_host=$hostb
             local mode=
-            [[ $benchmark4_num_bulk_clis -gt $cli_id ]] && mode=bulk || mode=rpc
+            [[ $benchmark4_num_bulk_clis -gt $cli_id ]] && mode=bulk || mode=$benchmark4_rpc_mode
             prog="$prog $cli_id $mode $hosta"
         fi
     else
