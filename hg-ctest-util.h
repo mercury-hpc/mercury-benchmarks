@@ -77,8 +77,6 @@ struct nahg_comm_info {
     hg_class_t *hgcl;
     hg_context_t *hgctx;
 
-    hg_bulk_class_t *hbcl;
-    hg_bulk_context_t *hbctx;
     hg_bulk_t bh;
 
     hg_id_t check_in_id;
@@ -131,6 +129,8 @@ void run_server(
         int num_checkins);
 
 /* misc util */
-hg_bulk_t dup_hg_bulk(hg_bulk_class_t *cl, hg_bulk_t in);
+hg_bulk_t dup_hg_bulk(hg_class_t *cl, hg_bulk_t in);
+
+na_addr_t lookup_serv_addr(struct nahg_comm_info *nahg, const char *info_str);
 
 #endif /* end of include guard: HG_CTEST_UTIL_H */

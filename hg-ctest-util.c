@@ -20,10 +20,8 @@ void nahg_init(
         struct nahg_comm_info *nh)
 {
     hg_size_t hsz;
-    hg_handle_t dummy_handle;
     hg_return_t hret;
     na_return_t nret;
-    struct hg_info *hinfo;
     char const * class_end;
     char const * transport_end;
 
@@ -66,7 +64,7 @@ void nahg_init(
     nh->nactx = NA_Context_create(nh->nacl);
     assert(nh->nactx);
 
-    nh->hgcl = HG_Init(nh->nacl, nh->nactx, NULL);
+    nh->hgcl = HG_Init(nh->nacl, nh->nactx);
     assert(nh->hgcl);
     nh->hgctx = HG_Context_create(nh->hgcl);
     assert(nh->hgctx);
@@ -89,30 +87,13 @@ void nahg_init(
     nh->bulk_read_rpc_id = MERCURY_REGISTER(nh->hgcl, "bulk_read",
             bulk_read_in_t, void, bulk_read);
 
-    /* utterly terrible hack - no way to directly get at the bulk class
-     * implicitly created by HG_Init, so we gotta get it through an hg_info,
-     * which comes from a valid handle...
-     * (for the time being, we want a single progress/trigger loop, so we need
-     * at this handle. Creating a bulk context requires us to have two loops */
     nret = NA_Addr_self(nh->nacl, &nh->self);
     assert(nret == NA_SUCCESS);
 
-    hret = HG_Create(nh->hgcl, nh->hgctx, nh->self, nh->get_bulk_handle_rpc_id,
-            &dummy_handle);
-    assert(hret == HG_SUCCESS);
-
-    hinfo = HG_Get_info(dummy_handle);
-    assert(hinfo);
-
-    nh->hbcl = hinfo->hg_bulk_class;
-    nh->hbctx = hinfo->bulk_context;
-
     hsz = buf_sz;
-    hret = HG_Bulk_create(nh->hbcl, 1, &nh->buf, &hsz, HG_BULK_READWRITE,
+    hret = HG_Bulk_create(nh->hgcl, 1, &nh->buf, &hsz, HG_BULK_READWRITE,
             &nh->bh);
     assert(hret == HG_SUCCESS);
-
-    HG_Destroy(dummy_handle);
 }
 
 void nahg_fini(struct nahg_comm_info *nh)
@@ -215,14 +196,14 @@ hg_return_t bulk_read(hg_handle_t handle)
     // create bulk handle to write to local buffer
     hg_bulk_t wrbulk = HG_BULK_NULL;
     hg_size_t buf_sz = nhserv.buf_sz;
-    hret = HG_Bulk_create(info->hg_bulk_class, 1,
+    hret = HG_Bulk_create(nhserv.hgcl, 1,
             &nhserv.buf, &buf_sz, HG_BULK_WRITE_ONLY, &wrbulk);
     assert(hret == HG_SUCCESS);
 
     // perform the bulk transfer
     na_return_t nret = NA_Addr_self(nhserv.nacl, &nhserv.self);
     assert(nret == NA_SUCCESS);
-    hret = HG_Bulk_transfer(info->bulk_context, bulk_read_continuation,
+    hret = HG_Bulk_transfer(nhserv.hgctx, bulk_read_continuation,
         handle, HG_BULK_PULL, info->addr, in.bh, 0, wrbulk, 0,
         in_buf_sz > buf_sz ? buf_sz : in_buf_sz, HG_OP_ID_NULL);
     assert(hret == HG_SUCCESS);
@@ -291,26 +272,26 @@ void run_server(
      * threaded */
     do {
         do {
-            hret = HG_Trigger(nhserv.hgcl, nhserv.hgctx, 0, 1, &num_cb);
+            hret = HG_Trigger(nhserv.hgctx, 0, 1, &num_cb);
         } while(hret == HG_SUCCESS && num_cb == 1);
-        hret = HG_Progress(nhserv.hgcl, nhserv.hgctx, 1000);
+        hret = HG_Progress(nhserv.hgctx, 1000);
     } while((hret == HG_SUCCESS || hret == HG_TIMEOUT) && !do_shutdown);
 
     nahg_fini(&nhserv);
 }
 
-hg_bulk_t dup_hg_bulk(hg_bulk_class_t *cl, hg_bulk_t in)
+hg_bulk_t dup_hg_bulk(hg_class_t *cl, hg_bulk_t in)
 {
     hg_bulk_t rtn;
     hg_size_t sz;
     hg_return_t hret;
     void * buf;
 
-    sz = HG_Bulk_get_serialize_size(in);
+    sz = HG_Bulk_get_serialize_size(in, HG_FALSE);
     buf = malloc(sz);
     if (!buf)
         return HG_BULK_NULL;
-    hret = HG_Bulk_serialize(buf, sz, in);
+    hret = HG_Bulk_serialize(buf, sz, HG_FALSE, in);
     if (hret != HG_SUCCESS)
         return HG_BULK_NULL;
     hret = HG_Bulk_deserialize(cl, &rtn, buf, sz);
@@ -319,4 +300,46 @@ hg_bulk_t dup_hg_bulk(hg_bulk_class_t *cl, hg_bulk_t in)
         return HG_BULK_NULL;
     else
         return rtn;
+}
+
+typedef struct serv_addr_out
+{
+    na_addr_t addr;
+    int set;
+} serv_addr_out_t;
+
+// helper for lookup_serv_addr
+static na_return_t lookup_serv_addr_cb(const struct na_cb_info *info)
+{
+    serv_addr_out_t *out = info->arg;
+    out->addr = info->info.lookup.addr;
+    out->set = 1;
+    return NA_SUCCESS;
+}
+
+na_addr_t lookup_serv_addr(struct nahg_comm_info *nahg, const char *info_str)
+{
+    serv_addr_out_t out;
+    na_return_t nret;
+
+    out.addr = NA_ADDR_NULL;
+    out.set = 0;
+
+    nret = NA_Addr_lookup(nahg->nacl, nahg->nactx, &lookup_serv_addr_cb, &out,
+            info_str, NA_OP_ID_IGNORE);
+    assert(nret == NA_SUCCESS);
+
+    // run the progress loop until we've got the output
+    do {
+        unsigned int count = 0;
+        do {
+            nret = NA_Trigger(nahg->nactx, 0, 1, &count);
+        } while (nret == NA_SUCCESS && count > 0);
+
+        if (out.set != 0) break;
+
+        nret = NA_Progress(nahg->nacl, nahg->nactx, 5000);
+    } while(nret == NA_SUCCESS || nret == NA_TIMEOUT);
+
+    return out.addr;
 }

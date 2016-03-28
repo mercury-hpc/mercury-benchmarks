@@ -147,7 +147,7 @@ static hg_return_t get_bulk_handle_cli_cb(const struct hg_cb_info *info)
         assert(hret == HG_SUCCESS);
         if (cb_dat) {
             /* sadly, have to copyout the bulk handle, which is awkward */
-            cb_dat->svr_bulk = dup_hg_bulk(nhcli.hbcl, out.bh);
+            cb_dat->svr_bulk = dup_hg_bulk(nhcli.hgcl, out.bh);
             cb_dat->u.is_finished = 1;
         }
         HG_Free_output(info->handle, &out);
@@ -178,7 +178,7 @@ static hg_return_t call_next_bulk(
 
     dprintf("calling next bulk\n");
     clock_gettime(CLOCK_MONOTONIC, &c->u.times.start_call);
-    hret = HG_Bulk_transfer(nhcli.hbctx, cli_bulk_xfer_cb, c, HG_BULK_PUSH,
+    hret = HG_Bulk_transfer(nhcli.hgctx, cli_bulk_xfer_cb, c, HG_BULK_PUSH,
             svr_addr, c->svr_bulk, 0, nhcli.bh, 0, nhcli.buf_sz,
             HG_OP_ID_IGNORE);
     if (hret == HG_SUCCESS) {
@@ -232,12 +232,12 @@ static hg_return_t cli_wait_timed(struct timespec start)
             dprintf("time over, op_cnt=%d\n", op_cnt);
         }
         do {
-            hret = HG_Trigger(nhcli.hgcl, nhcli.hgctx, 0, 1, &num_cb);
+            hret = HG_Trigger(nhcli.hgctx, 0, 1, &num_cb);
         } while(hret == HG_SUCCESS && num_cb);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             break;
 
-        hret = HG_Progress(nhcli.hgcl, nhcli.hgctx, 100);
+        hret = HG_Progress(nhcli.hgctx, 100);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             break;
 
@@ -264,7 +264,7 @@ static hg_return_t cli_wait_loop_all(
     dprintf("progress/trigger loop entered\n");
 
     for(retry = 0; retry < max_retries; retry++) {
-        hret = HG_Trigger(nhcli.hgcl, nhcli.hgctx, 0, 1, &num_cb);
+        hret = HG_Trigger(nhcli.hgctx, 0, 1, &num_cb);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             return hret;
 
@@ -278,7 +278,7 @@ static hg_return_t cli_wait_loop_all(
                 return HG_SUCCESS;
         }
 
-        hret = HG_Progress(nhcli.hgcl, nhcli.hgctx, 100);
+        hret = HG_Progress(nhcli.hgctx, 100);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             return hret;
     }
@@ -300,7 +300,6 @@ static void run_client(
                        rpc_isolated;
 
     /* return params */
-    na_return_t nret;
     hg_return_t hret;
 
     /* benchmark times */
@@ -309,11 +308,9 @@ static void run_client(
     /* initialize */
     nahg_init(svr, rdma_size, NA_FALSE, 0, &nhcli);
 
-    nret = NA_Addr_lookup_wait(
-            nhcli.nacl,
-            (strcmp(nhcli.class,"mpi")==0) ? nhcli.hoststr : svr,
-            &svr_addr);
-    assert(nret == NA_SUCCESS);
+    svr_addr = lookup_serv_addr(&nhcli,
+            (strcmp(nhcli.class,"mpi")==0) ? nhcli.hoststr : svr);
+    assert(svr_addr != NA_ADDR_NULL);
 
     nhcli.is_separate_servers = 0;
 
@@ -325,7 +322,7 @@ static void run_client(
 
     cb_init.is_init = 1;
     cb_init.u.is_finished = 0;
-    hret = HG_Create(nhcli.hgcl, nhcli.hgctx, svr_addr,
+    hret = HG_Create(nhcli.hgctx, svr_addr,
             nhcli.get_bulk_handle_rpc_id, &cb_init.handle);
     assert(hret == HG_SUCCESS);
 
@@ -341,7 +338,7 @@ static void run_client(
 
     /* create our own bulk handle if needed */
     if (mode == RPCBULK_MODE) {
-        hret = HG_Bulk_create(nhcli.hbcl, 1, &nhcli.buf, &nhcli.buf_sz,
+        hret = HG_Bulk_create(nhcli.hgcl, 1, &nhcli.buf, &nhcli.buf_sz,
                 HG_BULK_READ_ONLY, &rdbulk);
         assert(hret == HG_SUCCESS);
 
@@ -349,7 +346,7 @@ static void run_client(
     }
 
     /* init rpc handle for benchmark */
-    hret = HG_Create(nhcli.hgcl, nhcli.hgctx, svr_addr,
+    hret = HG_Create(nhcli.hgctx, svr_addr,
             mode == RPC_MODE ? nhcli.noop_rpc_id : nhcli.bulk_read_rpc_id,
             &rpc_isolated.handle);
     assert(hret == HG_SUCCESS);
@@ -357,7 +354,7 @@ static void run_client(
     /* do a sync before beginning the benchmark */
     cb_sync.is_init = 1;
     cb_sync.u.is_finished = 0;
-    hret = HG_Create(nhcli.hgcl, nhcli.hgctx, svr_addr,
+    hret = HG_Create(nhcli.hgctx, svr_addr,
             nhcli.check_in_id, &handle);
     assert(hret == HG_SUCCESS);
     hret = HG_Forward(handle, cli_sync_cb, &cb_sync, NULL);
@@ -389,7 +386,7 @@ static void run_client(
     /* wait on a sync for others to complete */
     cb_sync.is_init = 1;
     cb_sync.u.is_finished = 0;
-    hret = HG_Create(nhcli.hgcl, nhcli.hgctx, svr_addr,
+    hret = HG_Create(nhcli.hgctx, svr_addr,
             nhcli.check_in_id, &handle);
     assert(hret == HG_SUCCESS);
     hret = HG_Forward(handle, cli_sync_cb, &cb_sync, NULL);
@@ -399,7 +396,7 @@ static void run_client(
 
     /* send a shutdown request (don't bother checking) */
     if (bench_client_id == 0) {
-        hret = HG_Create(nhcli.hgcl, nhcli.hgctx, svr_addr,
+        hret = HG_Create(nhcli.hgctx, svr_addr,
                 nhcli.shutdown_server_rpc_id, &handle);
         assert(hret == HG_SUCCESS);
         HG_Forward(handle, NULL, NULL, NULL);
