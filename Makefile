@@ -24,7 +24,7 @@ ifeq ($(USE_DUMMY_PTHREAD),yes)
 DUMMY_PTHREAD := pthread-noop.o
 endif
 
-override CFLAGS += -Wall -Wextra -std=gnu99 $(PKG_CFLAGS)
+override CFLAGS += -Wall -Wextra -std=gnu99 -pthread $(PKG_CFLAGS)
 override LDLIBS += $(PKG_LDLIBS)
 
 EXES := hg-ctest1 hg-ctest2 hg-ctest3 hg-ctest4
