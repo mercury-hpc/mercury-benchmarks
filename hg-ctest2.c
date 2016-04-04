@@ -145,7 +145,7 @@ done:
     return stop_rpc_loop ? loop : NULL;
 }
 
-static hg_return_t cli_bulk_cb(const struct hg_bulk_cb_info *info)
+static hg_return_t cli_bulk_cb(const struct hg_cb_info *info)
 {
     struct timespec end;
     hg_return_t hret;
@@ -286,13 +286,13 @@ static hg_return_t init_get_handle_cb(const struct hg_cb_info *info)
 
     out_cb = (struct cli_init_cb *) info->arg;
 
-    hret = HG_Get_output(info->handle, &out);
+    hret = HG_Get_output(info->info.forward.handle, &out);
     assert(hret == HG_SUCCESS);
     if (out_cb) {
         out_cb->bulk_handle = dup_hg_bulk(nhcli.hgcl, out.bh);
         out_cb->is_finished = 1;
     }
-    HG_Free_output(info->handle, &out);
+    HG_Free_output(info->info.forward.handle, &out);
 
     return HG_SUCCESS;
 }

@@ -90,14 +90,14 @@ static hg_return_t get_bulk_handle_cli_cb(const struct hg_cb_info *info)
     assert(info->ret == HG_SUCCESS);
     cb_dat = (struct cli_cb_data*) info->arg;
     if (cb_dat->is_init) {
-        hret = HG_Get_output(info->handle, &out);
+        hret = HG_Get_output(info->info.forward.handle, &out);
         assert(hret == HG_SUCCESS);
         if (cb_dat) {
             /* sadly, have to copyout the bulk handle, which is awkward */
             cb_dat->bulk = dup_hg_bulk(nhcli.hgcl, out.bh);
             cb_dat->u.is_finished = 1;
         }
-        HG_Free_output(info->handle, &out);
+        HG_Free_output(info->info.forward.handle, &out);
     }
     else {
         op_cnt--;
@@ -113,7 +113,7 @@ static hg_return_t get_bulk_handle_cli_cb(const struct hg_cb_info *info)
     return HG_SUCCESS;
 }
 
-static hg_return_t cli_bulk_xfer_cb(const struct hg_bulk_cb_info *info);
+static hg_return_t cli_bulk_xfer_cb(const struct hg_cb_info *info);
 
 static hg_return_t call_next_bulk(
         struct cli_cb_data *c,
@@ -137,7 +137,7 @@ static hg_return_t call_next_bulk(
     return hret;
 }
 
-static hg_return_t cli_bulk_xfer_cb(const struct hg_bulk_cb_info *info)
+static hg_return_t cli_bulk_xfer_cb(const struct hg_cb_info *info)
 {
     struct cli_cb_data * cb_dat = info->arg;
     struct timespec t;

@@ -64,7 +64,7 @@ void nahg_init(
     nh->nactx = NA_Context_create(nh->nacl);
     assert(nh->nactx);
 
-    nh->hgcl = HG_Init(nh->nacl, nh->nactx);
+    nh->hgcl = HG_Init_na(nh->nacl, nh->nactx);
     assert(nh->hgcl);
     nh->hgctx = HG_Context_create(nh->hgcl);
     assert(nh->hgctx);
@@ -175,7 +175,7 @@ hg_return_t shutdown_server(hg_handle_t handle)
 }
 
 static hg_return_t bulk_read_continuation(
-        const struct hg_bulk_cb_info *callback_info)
+        const struct hg_cb_info *callback_info)
 {
     hg_handle_t h = callback_info->arg;
     hg_return_t hret = HG_Respond(h, NULL, NULL, NULL);

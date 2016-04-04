@@ -46,18 +46,18 @@ static hg_return_t get_bulk_handle_cli_cb(const struct hg_cb_info *info)
 
     assert(info->ret == HG_SUCCESS);
     out_cb = (struct cli_cb_data*) info->arg;
-    hret = HG_Get_output(info->handle, &out);
+    hret = HG_Get_output(info->info.forward.handle, &out);
     assert(hret == HG_SUCCESS);
     if (out_cb) {
         clock_gettime(CLOCK_MONOTONIC, &out_cb->ts);
         out_cb->bulk_handle = dup_hg_bulk(nhcli.hgcl, out.bh);
         out_cb->is_finished = 1;
     }
-    HG_Free_output(info->handle, &out);
+    HG_Free_output(info->info.forward.handle, &out);
     return HG_SUCCESS;
 }
 
-static hg_return_t cli_bulk_xfer_cb(const struct hg_bulk_cb_info *info)
+static hg_return_t cli_bulk_xfer_cb(const struct hg_cb_info *info)
 {
     struct cli_cb_data * out_cb = info->arg;
     assert(info->ret == HG_SUCCESS);
