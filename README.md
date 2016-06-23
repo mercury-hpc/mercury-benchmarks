@@ -36,8 +36,8 @@ hg-ctest4
 - when running the server, it's useful to fix the port the server attaches to.
   For that purpose, use CCI_CONFIG=cci-serv.conf (modify to your purposes)
   when running ./hg-ctestX server.
-  - alternatively, the server spits out it's address to a file, so you can also
-    script against that.
+  - alternatively, the server spits out it's address to the file
+    "ctest1-server-addr.tmp", so you can also script against that.
 - run programs without arguments to see usage instructions
 
 ## provided scripts
