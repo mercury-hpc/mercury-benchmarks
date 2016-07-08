@@ -69,13 +69,16 @@ enum mode_t {
 
 /* mercury/NA control structure */
 
-struct nahg_comm_info {
-    na_class_t *nacl;
-    na_context_t *nactx;
-    na_addr_t self;
-
+struct hg_comm_info
+{
     hg_class_t *hgcl;
     hg_context_t *hgctx;
+
+    // for self report
+    const char * class;
+    const char * transport;
+
+    hg_addr_t self;
 
     hg_bulk_t bh;
 
@@ -93,10 +96,6 @@ struct nahg_comm_info {
     void *buf;
     size_t buf_sz;
 
-    char * class;
-    char * transport;
-    char * hoststr;
-
     /* filled in by clients at runtime */
     int is_separate_servers;
 };
@@ -106,13 +105,13 @@ MERCURY_GEN_PROC(get_bulk_handle_out_t, ((hg_bulk_t)(bh)))
 MERCURY_GEN_PROC(bulk_read_in_t, ((hg_bulk_t)(bh)))
 
 /* init/fini code for ^ */
-void nahg_init(
+void hg_init(
         char const *info_str,
         size_t buf_sz,
-        na_bool_t listen,
+        hg_bool_t listen,
         int checkin_count,
-        struct nahg_comm_info *nh);
-void nahg_fini(struct nahg_comm_info *nh);
+        struct hg_comm_info *nh);
+void hg_fini(struct hg_comm_info *nh);
 
 /* server RPC handlers */
 hg_return_t check_in(hg_handle_t handle);
@@ -131,6 +130,6 @@ void run_server(
 /* misc util */
 hg_bulk_t dup_hg_bulk(hg_class_t *cl, hg_bulk_t in);
 
-na_addr_t lookup_serv_addr(struct nahg_comm_info *nahg, const char *info_str);
+na_addr_t lookup_serv_addr(struct hg_comm_info *hg, const char *info_str);
 
 #endif /* end of include guard: HG_CTEST_UTIL_H */

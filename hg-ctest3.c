@@ -16,7 +16,6 @@
 #include <mercury.h>
 #include <mercury_bulk.h>
 #include <mercury_macros.h>
-#include <na_cci.h> /* need for CCI-specific grabbing of URI */
 
 #define VERBOSE_LOG 0
 #include "hg-ctest-util.h"
@@ -34,11 +33,11 @@ static int op_cnt = 0;
 
 /* this needs to be a global to pass around between callback functions and
  * whatnot */
-static struct nahg_comm_info nhcli;
+static struct hg_comm_info nhcli;
 
 /* servers (need to be global for now) */
-na_addr_t rdma_svr_addr = NA_ADDR_NULL;
-na_addr_t rpc_svr_addr = NA_ADDR_NULL;
+hg_addr_t rdma_svr_addr = HG_ADDR_NULL;
+hg_addr_t rpc_svr_addr = HG_ADDR_NULL;
 
 /* gets passed throughout benchmark */
 struct cli_cb_data {
@@ -227,6 +226,7 @@ static hg_return_t cli_wait_loop_all(
 
 static void run_client(
         size_t rdma_size,
+        char const * info_str,
         char const * rdma_svr,
         char const * rpc_svr)
 {
@@ -246,12 +246,12 @@ static void run_client(
     struct timespec start_time;
 
     /* initialize */
-    nahg_init(rdma_svr, rdma_size, NA_FALSE, 0, &nhcli);
+    hg_init(info_str, rdma_size, HG_FALSE, 0, &nhcli);
 
     rdma_svr_addr = lookup_serv_addr(&nhcli, rdma_svr);
-    assert(rdma_svr_addr != NA_ADDR_NULL);
+    assert(rdma_svr_addr != HG_ADDR_NULL);
     rpc_svr_addr = lookup_serv_addr(&nhcli, rpc_svr);
-    assert(rpc_svr_addr != NA_ADDR_NULL);
+    assert(rpc_svr_addr != HG_ADDR_NULL);
 
 
     if (strcmp(rdma_svr, rpc_svr) != 0)
@@ -351,10 +351,10 @@ static void run_client(
 
     HG_Destroy(rpc_isolated.handle);
     HG_Bulk_free(bulk_isolated.bulk);
-    NA_Addr_free(nhcli.nacl, rdma_svr_addr);
-    NA_Addr_free(nhcli.nacl, rpc_svr_addr);
+    HG_Addr_free(nhcli.hgcl, rdma_svr_addr);
+    HG_Addr_free(nhcli.hgcl, rpc_svr_addr);
 
-    nahg_fini(&nhcli);
+    hg_fini(&nhcli);
 }
 
 static void usage();
@@ -363,7 +363,7 @@ int main(int argc, char *argv[])
 {
     enum mode_t mode = UNKNOWN;
     size_t rdma_size;
-    char const * rdma_svr, * rpc_svr, * listen_addr;
+    char const * rdma_svr, * rpc_svr, * info_str;
     char const * svr_id;
     int arg = 1;
 
@@ -411,25 +411,26 @@ int main(int argc, char *argv[])
 
     switch(mode) {
         case CLIENT:
-            if (arg+1 >= argc) {
+            if (arg+2 >= argc) {
                 usage();
                 exit(1);
             }
+            info_str  = argv[arg++];
             rdma_svr  = argv[arg++];
             rpc_svr   = argv[arg];
-            run_client(rdma_size, rdma_svr, rpc_svr);
+            run_client(rdma_size, info_str, rdma_svr, rpc_svr);
             break;
         case SERVER:
             if (arg >= argc) {
                 usage();
                 exit(1);
             }
-            listen_addr = argv[arg++];
+            info_str = argv[arg++];
             if (arg < argc)
                 svr_id = argv[arg];
             else
                 svr_id = NULL;
-            run_server(rdma_size, listen_addr, svr_id, 0);
+            run_server(rdma_size, info_str, svr_id, 0);
             break;
         default:
             assert(0);
@@ -444,15 +445,15 @@ const char * usage_str =
 "  --all prints out every measurement, rather than an average in client mode\n"
 "  -t is the time to run the benchmark in client mode\n"
 "  in client mode, OPTIONS are:\n"
-"    <rdma size> <rdma server> <rpc server>\n"
+"    <rdma size> <class+protocol> <rdma server> <rpc server>\n"
 "  in server mode, OPTIONS are:\n"
 "    <rdma size max> <listen addr> [<id>]\n"
-"  servers spit out files named ctest1-server-addr.tmp[-<id>] \n"
+"  servers spit out files named ctest-server-addr.tmp[-<id>] \n"
 "    containing their mercury names for clients to gobble up\n"
 "  Example:\n"
-"    hg-ctest1 server 1048576 bmi+tcp://localhost:3344 foo\n"
-"    hg-ctest1 client 1048576 \\\n"
-"      $(cat ctest1-server-addr.tmp-foo) $(cat ctest1-server-addr.tmp-foo)\n";
+"    hg-ctest3 server 1048576 bmi+tcp://localhost:3344 foo\n"
+"    hg-ctest3 client 1048576 bmi+tcp \\\n"
+"      $(cat ctest-server-addr.tmp-foo) $(cat ctest-server-addr.tmp-foo)\n";
 
 static void usage() {
     fprintf(stderr, usage_str);

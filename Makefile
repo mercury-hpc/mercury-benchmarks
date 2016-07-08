@@ -25,7 +25,8 @@ DUMMY_PTHREAD := pthread-noop.o
 endif
 
 override CFLAGS += -Wall -Wextra -std=gnu99 -pthread $(PKG_CFLAGS)
-override LDLIBS += $(PKG_LDLIBS)
+# -lrt for clock_gettime
+override LDLIBS += $(PKG_LDLIBS) -lrt
 
 EXES := hg-ctest1 hg-ctest2 hg-ctest3 hg-ctest4
 

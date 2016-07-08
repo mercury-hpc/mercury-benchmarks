@@ -13,7 +13,6 @@
 #include <mercury.h>
 #include <mercury_bulk.h>
 #include <mercury_macros.h>
-#include <na_cci.h> /* need for CCI-specific grabbing of URI */
 
 #define VERBOSE_LOG 0
 #include "hg-ctest-util.h"
@@ -32,11 +31,11 @@ static pthread_t bulk_thread;
 static pthread_barrier_t *barrier,
                          barrier_single, barrier_concurrent;
 
-static struct nahg_comm_info nhcli;
+static struct hg_comm_info hcli;
 
 /* servers */
-static na_addr_t rdma_svr_addr = NA_ADDR_NULL;
-static na_addr_t rpc_svr_addr = NA_ADDR_NULL;
+static hg_addr_t rdma_svr_addr = HG_ADDR_NULL;
+static hg_addr_t rpc_svr_addr = HG_ADDR_NULL;
 
 struct bulk_thread_args {
     hg_context_t *bulk_ctx;
@@ -105,8 +104,8 @@ static void * rpc_thread_run(void * arg)
     loop = malloc(sizeof(*loop));
     assert(loop);
 
-    hret = HG_Create(nhcli.hgctx, rdma_svr_addr,
-            nhcli.get_bulk_handle_rpc_id, &loop->u.handle);
+    hret = HG_Create(hcli.hgctx, rdma_svr_addr,
+            hcli.get_bulk_handle_rpc_id, &loop->u.handle);
     if (hret != HG_SUCCESS)
         goto done;
 
@@ -132,11 +131,11 @@ static void * rpc_thread_run(void * arg)
     /* wait loop until the benchmark is over */
     do {
         do {
-            hret = HG_Trigger(nhcli.hgctx, 0, 1, &num_cb);
+            hret = HG_Trigger(hcli.hgctx, 0, 1, &num_cb);
         } while (hret == HG_SUCCESS && num_cb > 0);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             goto done;
-        hret = HG_Progress(nhcli.hgctx, 100);
+        hret = HG_Progress(hcli.hgctx, 100);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             goto done;
     } while (!stop_rpc_loop);
@@ -172,7 +171,7 @@ static hg_return_t cli_bulk_cb(const struct hg_cb_info *info)
         dprintf("calling next\n");
         hret = HG_Bulk_transfer(loop->u.bargs.bulk_ctx, cli_bulk_cb, loop,
                 HG_BULK_PUSH, rdma_svr_addr, loop->u.bargs.bulk_remote, 0,
-                loop->u.bargs.bulk_local, 0, nhcli.buf_sz, NULL);
+                loop->u.bargs.bulk_local, 0, hcli.buf_sz, NULL);
         clock_gettime(CLOCK_MONOTONIC, &end);
         loop->total_time_call +=
             time_to_s_lf(timediff(loop->start_call, end));
@@ -212,7 +211,7 @@ static void * bulk_thread_run(void * arg)
     dprintf("initial bulk call\n");
     hret = HG_Bulk_transfer(loop->u.bargs.bulk_ctx, cli_bulk_cb, loop,
             HG_BULK_PUSH, rdma_svr_addr, loop->u.bargs.bulk_remote, 0,
-            loop->u.bargs.bulk_local, 0, nhcli.buf_sz, NULL);
+            loop->u.bargs.bulk_local, 0, hcli.buf_sz, NULL);
     if (hret != HG_SUCCESS)
         goto done;
     clock_gettime(CLOCK_MONOTONIC, &end_call);
@@ -255,7 +254,7 @@ static hg_return_t cli_wait_loop_all(
     dprintf("progress/trigger loop entered\n");
 
     for(retry = 0; retry < max_retries; retry++) {
-        hret = HG_Trigger(nhcli.hgctx, 0, 1, &num_cb);
+        hret = HG_Trigger(hcli.hgctx, 0, 1, &num_cb);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             return hret;
 
@@ -269,7 +268,7 @@ static hg_return_t cli_wait_loop_all(
                 return HG_SUCCESS;
         }
 
-        hret = HG_Progress(nhcli.hgctx, 100);
+        hret = HG_Progress(hcli.hgctx, 100);
         if (hret != HG_SUCCESS && hret != HG_TIMEOUT)
             return hret;
     }
@@ -289,7 +288,7 @@ static hg_return_t init_get_handle_cb(const struct hg_cb_info *info)
     hret = HG_Get_output(info->info.forward.handle, &out);
     assert(hret == HG_SUCCESS);
     if (out_cb) {
-        out_cb->bulk_handle = dup_hg_bulk(nhcli.hgcl, out.bh);
+        out_cb->bulk_handle = dup_hg_bulk(hcli.hgcl, out.bh);
         out_cb->is_finished = 1;
     }
     HG_Free_output(info->info.forward.handle, &out);
@@ -299,6 +298,7 @@ static hg_return_t init_get_handle_cb(const struct hg_cb_info *info)
 
 static void run_client(
         size_t rdma_size,
+        char const * info_str,
         char const * rdma_svr,
         char const * rpc_svr)
 {
@@ -318,19 +318,19 @@ static void run_client(
                        *bulk_concurrent;
 
     /* initialize */
-    nahg_init(rdma_svr, rdma_size, NA_FALSE, 0, &nhcli);
+    hg_init(info_str, rdma_size, HG_FALSE, 0, &hcli);
 
-    rdma_svr_addr = lookup_serv_addr(&nhcli, rdma_svr);
-    assert(rdma_svr_addr != NA_ADDR_NULL);
-    rpc_svr_addr = lookup_serv_addr(&nhcli, rpc_svr);
-    assert(rpc_svr_addr != NA_ADDR_NULL);
+    rdma_svr_addr = lookup_serv_addr(&hcli, rdma_svr);
+    assert(rdma_svr_addr != HG_ADDR_NULL);
+    rpc_svr_addr = lookup_serv_addr(&hcli, rpc_svr);
+    assert(rpc_svr_addr != HG_ADDR_NULL);
 
     if (strcmp(rdma_svr, rpc_svr) != 0)
-        nhcli.is_separate_servers = 1;
+        hcli.is_separate_servers = 1;
 
     /* get the bulk handle */
-    hret = HG_Create(nhcli.hgctx, rdma_svr_addr,
-            nhcli.get_bulk_handle_rpc_id, &handle);
+    hret = HG_Create(hcli.hgctx, rdma_svr_addr,
+            hcli.get_bulk_handle_rpc_id, &handle);
     assert(hret == HG_SUCCESS);
     cb_data.is_finished = 0;
     cb_data.bulk_handle = HG_BULK_NULL;
@@ -341,9 +341,9 @@ static void run_client(
 
     /* create a separate bulk context / handle for the bulk thread to iterate on */
     bargs.bulk_remote = cb_data.bulk_handle;
-    bargs.bulk_ctx = HG_Context_create(nhcli.hgcl);
+    bargs.bulk_ctx = HG_Context_create(hcli.hgcl);
     assert(bargs.bulk_ctx != NULL);
-    hret = HG_Bulk_create(nhcli.hgcl, 1, &nhcli.buf, &nhcli.buf_sz,
+    hret = HG_Bulk_create(hcli.hgcl, 1, &hcli.buf, &hcli.buf_sz,
             HG_BULK_READWRITE, &bargs.bulk_local);
     assert(hret == HG_SUCCESS);
 
@@ -394,8 +394,8 @@ static void run_client(
     printf( "%-8s %-8s %d %12lu %d "
             "%7d %.3e %.3e %7d %.3e %.3e "
             "%7d %.3e %.3e %7d %.3e %.3e\n",
-            nhcli.class ? nhcli.class : "default", nhcli.transport,
-            nhcli.is_separate_servers, nhcli.buf_sz, benchmark_seconds,
+            hcli.class ? hcli.class : "default", hcli.transport,
+            hcli.is_separate_servers, hcli.buf_sz, benchmark_seconds,
             PR_STAT(rpc_isolated), PR_STAT(rpc_concurrent),
             PR_STAT(bulk_isolated), PR_STAT(bulk_concurrent));
 
@@ -404,16 +404,16 @@ static void run_client(
     /* clean up */
 
     /* shutdown the servers (don't bother checking) */
-    hret = HG_Create(nhcli.hgctx, rdma_svr_addr,
-            nhcli.shutdown_server_rpc_id, &handle);
+    hret = HG_Create(hcli.hgctx, rdma_svr_addr,
+            hcli.shutdown_server_rpc_id, &handle);
     assert(hret == HG_SUCCESS);
     HG_Forward(handle, NULL, NULL, NULL);
     hret = cli_wait_loop_all(10, 0, NULL);
     HG_Destroy(handle);
 
-    if (nhcli.is_separate_servers) {
-        hret = HG_Create(nhcli.hgctx, rpc_svr_addr,
-                nhcli.shutdown_server_rpc_id, &handle);
+    if (hcli.is_separate_servers) {
+        hret = HG_Create(hcli.hgctx, rpc_svr_addr,
+                hcli.shutdown_server_rpc_id, &handle);
         assert(hret == HG_SUCCESS);
         HG_Forward(handle, NULL, NULL, NULL);
         hret = cli_wait_loop_all(10, 0, NULL);
@@ -428,10 +428,10 @@ static void run_client(
     free(bulk_concurrent);
     HG_Bulk_free(cb_data.bulk_handle);
     HG_Context_destroy(bargs.bulk_ctx);
-    NA_Addr_free(nhcli.nacl, rdma_svr_addr);
-    NA_Addr_free(nhcli.nacl, rpc_svr_addr);
+    HG_Addr_free(hcli.hgcl, rdma_svr_addr);
+    HG_Addr_free(hcli.hgcl, rpc_svr_addr);
 
-    nahg_fini(&nhcli);
+    hg_fini(&hcli);
 }
 
 static void usage(void);
@@ -440,7 +440,7 @@ int main(int argc, char *argv[])
 {
     enum mode_t mode = UNKNOWN;
     size_t rdma_size;
-    char const * rdma_svr, * rpc_svr, * listen_addr;
+    char const * rdma_svr, * rpc_svr, * info_str;
     char const * svr_id;
     int arg = 1;
 
@@ -486,14 +486,15 @@ int main(int argc, char *argv[])
 
     switch(mode) {
         case CLIENT:
-            if (arg+2 >= argc ) {
+            if (arg+3 >= argc ) {
                 usage();
                 exit(1);
             }
             rdma_size = (size_t) strtol(argv[arg++], NULL, 10);
+            info_str  = argv[arg++];
             rdma_svr  = argv[arg++];
             rpc_svr   = argv[arg];
-            run_client(rdma_size, rdma_svr, rpc_svr);
+            run_client(rdma_size, info_str, rdma_svr, rpc_svr);
             break;
         case SERVER:
             if (arg+1 >= argc) {
@@ -501,12 +502,12 @@ int main(int argc, char *argv[])
                 exit(1);
             }
             rdma_size = (size_t) strtol(argv[arg++], NULL, 10);
-            listen_addr = argv[arg++];
+            info_str = argv[arg++];
             if (arg < argc)
                 svr_id = argv[arg];
             else
                 svr_id = NULL;
-            run_server(rdma_size, listen_addr, svr_id, 0);
+            run_server(rdma_size, info_str, svr_id, 0);
             break;
         default:
             assert(0);
@@ -521,15 +522,15 @@ const char * usage_str =
 "  --all prints out every measurement, rather than an average in client mode\n"
 "  -t is the time to run the benchmark in client mode\n"
 "  in client mode, OPTIONS are:\n"
-"    <rdma size> <rdma server> <rpc server>\n"
+"    <rdma size> <class+protocol> <rdma server> <rpc server>\n"
 "  in server mode, OPTIONS are:\n"
 "    <rdma size max> <listen addr> [<id>]\n"
-"  servers spit out files named ctest1-server-addr.tmp[-<id>] \n"
+"  servers spit out files named ctest-server-addr.tmp[-<id>] \n"
 "    containing their mercury names for clients to gobble up\n"
 "  Example:\n"
-"    hg-ctest1 server 1048576 bmi+tcp://localhost:3344 foo\n"
-"    hg-ctest1 client 1048576 \\\n"
-"      $(cat ctest1-server-addr.tmp-foo) $(cat ctest1-server-addr.tmp-foo)\n";
+"    hg-ctest2 server 1048576 bmi+tcp://localhost:3344 foo\n"
+"    hg-ctest2 client 1048576 bmi+tcp \\\n"
+"      $(cat ctest-server-addr.tmp-foo) $(cat ctest-server-addr.tmp-foo)\n";
 
 static void usage() {
     fprintf(stderr, usage_str);
