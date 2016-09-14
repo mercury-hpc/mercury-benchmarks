@@ -130,6 +130,6 @@ void run_server(
 /* misc util */
 hg_bulk_t dup_hg_bulk(hg_class_t *cl, hg_bulk_t in);
 
-na_addr_t lookup_serv_addr(struct hg_comm_info *hg, const char *info_str);
+hg_addr_t lookup_serv_addr(struct hg_comm_info *hg, const char *info_str);
 
 #endif /* end of include guard: HG_CTEST_UTIL_H */
