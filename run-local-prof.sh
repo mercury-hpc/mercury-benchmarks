@@ -14,6 +14,8 @@ export MV2_SUPPORT_DPM=1
 buf_size=4096
 time_to_run=120
 op_type=rpc
+# optionally set by specific plugin (bmi)
+hoststr=
 
 if [[ $class == "" ]] ; then
     echo Must provide class as arg 1 >&2
@@ -27,13 +29,15 @@ elif [[ ! ( $mode =~ (client)|(server)|(all) ) ]] ; then
     echo Unexpected mode: want "client", "server", or "all"
 fi
 
+[[ $class == "bmi" ]] && hoststr="3344"
+
 [[ $mode == "server" || $mode == "all" ]] && run_server=yes || run_server=no
 [[ $mode == "client" || $mode == "all" ]] && run_client=yes || run_client=no
 
 if [[ $run_server == "yes" ]] ; then
     CPUPROFILE=./pprof-srv-$class-$transport.out \
         mpirun -np 1 -host $(hostname) \
-        ./hg-ctest4 server $buf_size 1 $class+$transport://$(hostname):3344 &
+        ./hg-ctest4 server $buf_size 1 $class+$transport://$hoststr &
     [[ $mode == "server" ]] && touch $token_file
 fi
 # do a long run so that initialization costs don't skew the benchmark
@@ -45,7 +49,7 @@ if [[ $run_client == "yes" ]] ; then
     sleep 1
     CPUPROFILE=./pprof-cli-$class-$transport.out \
         mpirun -np 1 -host $(hostname) \
-        ./hg-ctest4 -t $time_to_run client $buf_size 0 $op_type $(cat ctest1-server-addr.tmp)
+        ./hg-ctest4 -t $time_to_run client $buf_size 0 $op_type $class+$transport $(cat ctest-server-addr.tmp)
     err=$?
     if [[ $err -ne 0 ]] ; then
         echo Client error - exited with code $err >&2

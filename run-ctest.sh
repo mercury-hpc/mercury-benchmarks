@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # mirrors the filename in the utility code
-svr_addr_fname="ctest1-server-addr.tmp"
+svr_addr_fname="ctest-server-addr.tmp"
 
 # MUST BE RUN IN THE SAME DIRECTORY AS THE EXECUTABLES
 p=$PWD
 
 # optionally generate this file with the additional LD_LIBRARY_PATH entries
 # you need to run
-ldpath=
+ldpath=ldpath.txt
 
 # for some reason BMI is crashing for 32MB and higher, so use a fixed (default)
 # value for now
@@ -49,9 +49,9 @@ benchmark4_rpc_mode=rpc
 
 host_default=localhost
 
-server_host_rdma=$host_default:3344
-server_host_rpc=$host_default:3345
-client_host=localhost
+server_host_rdma=localhost
+server_host_rpc=localhost
+client_hosts=(localhost)
 
 # output files
 out_prefix=cli_send
@@ -59,7 +59,7 @@ server_err=$out_prefix-srv.err
 client_out=$out_prefix.out
 client_err=$out_prefix.err
 
-while getopts ":s:an:t:b:m:" opt ; do
+while getopts ":s:an:t:b:m:d:r" opt ; do
     case $opt in
         s)
             sz=$OPTARG
@@ -79,6 +79,12 @@ while getopts ":s:an:t:b:m:" opt ; do
         m)
             benchmark4_rpc_mode="$OPTARG"
             ;;
+        d)
+            server_host_rdma="$OPTARG"
+            ;;
+        r)
+            server_host_rpc="$OPTARG"
+            ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
             exit 1
@@ -92,17 +98,19 @@ done
 
 shift $((OPTIND-1))
 
-[[ -n $1 ]] && server_host_rdma=$1
 if [[ $benchmark_nr == 4 ]] ; then
     shift
-    if [[ $# -gt 0 ]] ; then 
-        benchmark4_num_clis="$#"
-        all_clients=($@)
+    [[ -n $1 ]] && benchmark4_num_clis=$1
+    shift
+    if [[ $# -gt 0 ]] ; then
+        client_hosts=($@)
+        if [[ ${#client_hosts[@]} != $benchmark4_num_clis ]] ; then
+            echo "When specifying client hosts, must have one per client" >&2
+            exit 1
+        fi
     fi
 else
-    [[ -n $2 ]] && server_host_rpc=$2
-    [[ -n $3 ]] && client_host=$3
-    all_clients=($client_host)
+    [[ -n $1 ]] && client_hosts=($3)
 fi
 
 # generate LD_LIBRARY_PATH for remote runs
@@ -124,17 +132,23 @@ function insert_escapes () {
 }
 
 function run () {
+    set -u
     local hosttype=$1
-    local hosta=$2 # server mode - listen addr, client mode - rdma svr
+    local class=$2
+    local protocol=$3
+    local host=$4
+    shift 4
+
     if [[ $hosttype == "server" ]] ; then
-        local id=$3 # may be empty
+        local svr_listen_port=$1
+        local svr_id=${2:-} # may be empty
     else
         if [[ $benchmark_nr == 4 ]] ; then
-            local cli_id=$3
-            local hostb=$4
+            local cli_id=$1
+            local cli_rdma_host=$2 # should be the full hg addr string
         else
-            local hostb=$3
-            local hostc=$4 # may be empty
+            local cli_rdma_host=$1
+            local cli_rpc_host=$2
         fi
     fi
 
@@ -145,64 +159,48 @@ function run () {
     #local hostc=$4 # client mode - where to run client in bench 1-3
     #local cli_id=$4 # client mode - id of client in bench 4
 
-    case $benchmark_nr in 
-        1)
-            local opts="$all_opt"
-            ;;
-        2)
-            local opts="$all_opt $benchmark_timeopt"
-            ;;
-        3)
-            local opts="$all_opt $benchmark_timeopt"
-            ;;
-        4)
-            local opts="$all_opt $benchmark_timeopt"
-            ;;
-        *)
-            echo "Unknown benchmark number $benchmark_nr" >&2
-            exit 1
-    esac
+    if [[ $benchmark_nr == 1 ]] ; then
+        local opts="$all_opt"
+    else
+        local opts="$all_opt $benchmark_timeopt"
+    fi
 
     local prog="$timeout_cmd $mpiexec_deco ./hg-ctest$benchmark_nr $opts $hosttype $sz"
-    local cli_host=
     if [[ $benchmark_nr == 4 ]] ; then
         if [[ $hosttype == "server" ]] ; then 
-            prog="$prog $benchmark4_num_clis $hosta $id"
+            prog="$prog $benchmark4_num_clis $class+$protocol://$svr_listen_port $svr_id"
         else
-            cli_host=$hostb
-            local mode=
-            [[ $benchmark4_num_bulk_clis -gt $cli_id ]] && mode=bulk || mode=$benchmark4_rpc_mode
-            prog="$prog $cli_id $mode $hosta"
+            if [[ $benchmark4_num_bulk_clis -gt $cli_id ]] ; then
+                local mode=bulk
+            else
+                local mode=$benchmark4_rpc_mode
+            fi
+            prog="$prog $cli_id $mode $class+$protocol $cli_rdma_host"
         fi
     else
         if [[ $hosttype == "server" ]] ; then
-            prog="$prog $hosta $id"
+            prog="$prog $class+$protocol://$svr_listen_port $svr_id"
         else
-            cli_host=$hostc
-            prog="$prog $hosta $hostb"
+            prog="$prog $class+$protocol $cli_rdma_host $cli_rpc_host"
         fi
     fi
 
     #ready to run
     if [[ $hosttype == client ]] ; then
-        if [[ $cli_host == "" || $cli_host =~ localhost ]] ; then
+        if [[ $host == "" || $host =~ localhost ]] ; then
             echo "running client: $prog" >&2
             $prog
         else
-            local tmp=${cli_host#*://}
-            local host=${tmp%:*}
             # prevent bash from substituting variables in mpi port string
             local san_prog=$(insert_escapes $prog)
             echo "running client: ssh $host cd $p; $ldpath_set $mv2_vars $san_prog" >&2
             ssh $host "cd $p; $ldpath_set $mv2_vars $san_prog"
         fi
     else
-        if [[ $hosta =~ "localhost" ]] ; then
+        if [[ $host =~ "localhost" ]] ; then
             echo "running server: $prog" >&2
             $prog
         else
-            local tmp=${hosta#*://}
-            local host=${tmp%:*}
             local san_prog=$(insert_escapes $prog)
             echo "running server: ssh $host cd $p; $ldpath_set $mv2_vars $san_prog" >&2
             ssh $host "cd $p; $ldpath_set $mv2_vars $san_prog"
@@ -212,32 +210,53 @@ function run () {
 
 function runtest () {
     local class=$1
-    local transport=$2
+    local protocol=$2
+
+    if [[ $class == "cci" && $protocol == "sm" ]] ; then
+        local server_rpc_port="0/3344"
+        local server_rdma_port="0/3345"
+    elif [[ $class == "mpi" && $protocol == "dynamic" ]] ; then
+        local server_rpc_port=" "
+        local server_rdma_port=" "
+    else
+        local server_rpc_port="3344"
+        local server_rdma_port="3345"
+    fi
 
     # single server
-    echo "single server benchmark, $class+$transport" \
+    echo "single server benchmark, $class+$protocol" \
         | tee -a $server_err $client_err
-    run server $class+$transport://$server_host_rpc \
+    run server $class $protocol $server_host_rpc "$server_rpc_port" \
         >> $server_err 2>&1 &
     local pid=$!
     sleep 2
-    run client $(cat $svr_addr_fname) $(cat $svr_addr_fname) \
+    if [[ $class == "mpi" ]] ; then
+        local host="$class+$protocol://$(cat $svr_addr_fname)"
+    else
+        local host="$class+$(cat $svr_addr_fname)"
+    fi
+    run client $class $protocol ${client_hosts[0]} $host $host \
         >> $client_out 2>> $client_err \
-        || return $err
+        || return $?
     wait $pid || return $?
 
-    echo "dual server benchmark, $class+$transport" \
+    echo "dual server benchmark, $class+$protocol" \
         | tee -a $server_err $client_err
-    run server $class+$transport://$server_host_rdma 0 \
+    run server $class $protocol $server_host_rdma "$server_rdma_port" 0 \
         >> $server_err 2>&1 &
     local pid1=$!
-    run server $class+$transport://$server_host_rpc 1 \
+    run server $class $protocol $server_host_rpc "$server_rpc_port" 1 \
         >> $server_err 2>&1 &
     local pid2=$!
     sleep 2
-    local host_rdma=$(cat $svr_addr_fname-0)
-    local host_rpc=$(cat $svr_addr_fname-1)
-    run client $host_rdma $host_rpc $client_host \
+    if [[ $class == "mpi" ]] ; then
+        local host_rdma="$class+$protocol://$(cat $svr_addr_fname-0)"
+        local host_rpc="$class+$protocol://$(cat $svr_addr_fname-1)"
+    else
+        local host_rdma="$class+$(cat $svr_addr_fname-0)"
+        local host_rpc="$class+$(cat $svr_addr_fname-1)"
+    fi
+    run client $class $protocol ${client_hosts[0]} $host_rdma $host_rpc \
         >> $client_out 2>> $client_err \
         || return $?
     wait $pid1 || return $?
@@ -247,20 +266,27 @@ function runtest () {
 
 function runtest4 () {
     local class=$1
-    local transport=$2
+    local protocol=$2
     local pid_arr=()
 
+    if [[ $class == "cci" && $protocol == "sm" ]] ; then
+        local port="0/3344"
+    elif [[ $class == "mpi" && $protocol == "dynamic" ]] ; then
+        local port=" "
+    else
+        local port="3344"
+    fi
+
     # single server
-    echo "N-1 benchmark, $class+$transport" \
+    echo "N-1 benchmark, $class+$protocol" \
         | tee -a $server_err $client_err
-    run server $class+$transport://$server_host_rdma \
+    run server $class $protocol $server_host_rdma "$port" \
         >> $server_err 2>&1 &
     pid_arr[0]=$!
     sleep 2
 
     for ((i = 0; i < $benchmark4_num_clis; i++)) ; do
-        client_host=${all_clients[i]}
-        run client $(cat $svr_addr_fname) $i $client_host \
+        run client $class $protocol ${client_hosts[$i]} $i $class+$(cat $svr_addr_fname) \
             >> $client_out.$i 2>> $client_err.$i &
         pid_arr[$((i+1))]=$!
     done
@@ -309,16 +335,16 @@ function runtest4 () {
 g_test=
 [[ $benchmark_nr -eq 4 ]] && g_test=runtest4 || g_test=runtest
 function runall () {
-    $g_test bmi tcp   || return $?
+    #$g_test bmi tcp   || return $?
     $g_test cci tcp   || return $?
     #$g_test cci verbs || return $?
     #$g_test cci sm    || return $?
-    #$g_test mpi tcp   || return $?
+    #$g_test mpi dynamic   || return $?
 }
 
 if [[ $benchmark_nr == 1 ]] ; then
     cat > $client_out <<EOF
-# format: <class> <transport> <separate rpc/bulk svrs> <bulk size> <repetitions>
+# format: <class> <protocol> <separate rpc/bulk svrs> <bulk size> <repetitions>
 #     time (s): rpc: isolated <call> <complete>
 #                    concurrent rpc-first <call> <complete>
 #                    concurrent bulk-first <call> <complete>
@@ -328,12 +354,12 @@ if [[ $benchmark_nr == 1 ]] ; then
 EOF
 elif [[ $benchmark_nr == 4 ]] ; then
     cat > $client_out <<EOF
-# format: <class> <transport> <bulk size> <bench time> <type> <id>
+# format: <class> <protocol> <bulk size> <bench time> <type> <id>
 #     time (s): <# calls> <call avg> <complete avg>
 EOF
 else
     cat > $client_out <<EOF
-# format: <class> <transport> <separate rpc/bulk srvs> <bulk size> <bench time>
+# format: <class> <protocol> <separate rpc/bulk srvs> <bulk size> <bench time>
 #     time (s): rpc:  isolated   <# calls> <call avg> <complete avg>
 #                     concurrent <# calls> <call avg> <complete avg>
 #               bulk: isolated   <# calls> <call avg> <complete avg>
