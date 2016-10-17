@@ -163,13 +163,13 @@ hg_return_t bulk_read(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     // perform the bulk transfer
-    hret = HG_Addr_self(hserv.hgcl, &hserv.self);
     assert(hret == HG_SUCCESS);
     hret = HG_Bulk_transfer(hserv.hgctx, bulk_read_continuation,
         handle, HG_BULK_PULL, info->addr, in.bh, 0, wrbulk, 0,
-        in_buf_sz > buf_sz ? buf_sz : in_buf_sz, HG_OP_ID_NULL);
+        in_buf_sz > buf_sz ? buf_sz : in_buf_sz, HG_OP_ID_IGNORE);
     assert(hret == HG_SUCCESS);
 
+    HG_Bulk_free(wrbulk);
     HG_Free_input(handle, &in);
     HG_Destroy(handle);
 
