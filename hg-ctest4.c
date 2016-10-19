@@ -392,7 +392,7 @@ static void run_client(
     assert(hret == HG_SUCCESS);
     hret = cli_wait_loop_all(20, 1, &cb_sync);
     assert(hret == HG_SUCCESS);
-    HD_Destroy(handle);
+    HG_Destroy(handle);
 
     /* send a shutdown request (don't bother checking) */
     if (bench_client_id == 0) {
